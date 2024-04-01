@@ -3,6 +3,9 @@
 
 # import libraries
 import os
+import pandas as pd
+from sklearn.model_selection import train_test_split
+
 os.environ['QT_QPA_PLATFORM']='offscreen'
 
 
@@ -15,8 +18,9 @@ def import_data(pth):
             pth: a path to the csv
     output:
             df: pandas dataframe
-    '''	
-	pass
+    '''
+    return pd.read_csv(pth)
+    
 
 
 def perform_eda(df):
@@ -28,10 +32,10 @@ def perform_eda(df):
     output:
             None
     '''
-	pass
+    pass
 
 
-def encoder_helper(df, category_lst, response):
+def encoder_helper(df, category_lst, response="Churn"):
     '''
     helper function to turn each categorical column into a new column with
     propotion of churn for each category - associated with cell 15 from the notebook
@@ -44,10 +48,13 @@ def encoder_helper(df, category_lst, response):
     output:
             df: pandas dataframe with new columns for
     '''
-    pass
+    for category in category_lst:
+        mean_encoded_col = df.groupby(category)[response].transform('mean')
+        df[f'{category}_{response}'] = df[category].map(mean_encoded_col)
+    return df
 
 
-def perform_feature_engineering(df, response):
+def perform_feature_engineering(df, response="Churn"):
     '''
     input:
               df: pandas dataframe
@@ -59,6 +66,38 @@ def perform_feature_engineering(df, response):
               y_train: y training data
               y_test: y testing data
     '''
+    if response not in df.columns:
+        raise ValueError(f"{response} column not found in dataframe")
+    
+    y = df[response]
+    X = pd.DataFrame()
+    
+    # List of categorical columns to encode
+    category_lst = ['Gender', 'Education_Level', 'Marital_Status', 'Income_Category', 'Card_Category']
+    
+    # Encoding categorical columns based on mean of response variable
+    encoder_helper(df, category_lst, "Churn")
+    #for col in categorical_cols:
+    #    mean_encoded_col = df.groupby(col).mean()[response].to_dict()
+    #    df[f'{col}_Churn'] = df[col].map(mean_encoded_col)
+    
+    # List of columns to keep
+    keep_cols = ['Customer_Age', 'Dependent_count', 'Months_on_book',
+                 'Total_Relationship_Count', 'Months_Inactive_12_mon',
+                 'Contacts_Count_12_mon', 'Credit_Limit', 'Total_Revolving_Bal',
+                 'Avg_Open_To_Buy', 'Total_Amt_Chng_Q4_Q1', 'Total_Trans_Amt',
+                 'Total_Trans_Ct', 'Total_Ct_Chng_Q4_Q1', 'Avg_Utilization_Ratio'] + \
+                [f'{col}_Churn' for col in category_lst]
+    
+    # Filtering the dataframe to keep only the necessary columns
+    X = df[keep_cols]
+    
+    # Splitting the dataset into training and testing sets
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
+    
+    return X_train, X_test, y_train, y_test
+
+
 
 def classification_report_image(y_train,
                                 y_test,
@@ -108,3 +147,15 @@ def train_models(X_train, X_test, y_train, y_test):
               None
     '''
     pass
+
+def main():
+    df = import_data(r"./data/bank_data.csv")
+    df['Churn'] = df['Attrition_Flag'].apply(lambda val: 0 if val == "Existing Customer" else 1)
+    X_train, X_test, y_train, y_test = perform_feature_engineering(df, "Churn")
+    print(X_train.shape)
+    print(X_test.shape)
+    print(y_train.shape)
+    print(y_test.shape)
+
+if __name__ == "__main__":
+    main()

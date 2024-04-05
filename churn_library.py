@@ -4,7 +4,11 @@
 # import libraries
 import os
 import pandas as pd
+
 from sklearn.model_selection import train_test_split
+from sklearn.linear_model import LogisticRegression
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import GridSearchCV
 
 os.environ['QT_QPA_PLATFORM']='offscreen'
 
@@ -49,7 +53,7 @@ def encoder_helper(df, category_lst, response="Churn"):
             df: pandas dataframe with new columns for
     '''
     for category in category_lst:
-        mean_encoded_col = df.groupby(category)[response].transform('mean')
+        mean_encoded_col = df.groupby(category)[response].mean()
         df[f'{category}_{response}'] = df[category].map(mean_encoded_col)
     return df
 
@@ -91,6 +95,8 @@ def perform_feature_engineering(df, response="Churn"):
     
     # Filtering the dataframe to keep only the necessary columns
     X = df[keep_cols]
+
+    print(X.isnull().sum())
     
     # Splitting the dataset into training and testing sets
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
@@ -148,14 +154,96 @@ def train_models(X_train, X_test, y_train, y_test):
     '''
     pass
 
+class ModelHandler:
+    """
+    A class for handling model training, prediction, and saving to disk.
+    """
+    def __init__(self, model, param_grid=None, cv=None):
+        """
+        Initialize the ModelHandler.
+        """
+        self.model = model
+        self.param_grid = param_grid
+        self.cv = cv
+        if self.param_grid:
+            self.model = GridSearchCV(estimator=model, param_grid=param_grid, cv=cv)
+    
+    def train(self, X, y):
+        """
+        Fit the model or GridSearchCV object.
+        """
+        self.model.fit(X, y)
+    
+    def predict(self, X):
+        """
+        Predict using the fitted model or the best estimator from GridSearchCV.
+        """
+        if isinstance(self.model, GridSearchCV):
+            return self.model.best_estimator_.predict(X)
+        else:
+            return self.model.predict(X)
+    
+    def save_model(self, path):
+        """
+        Save the trained model to disk.
+        """
+        if isinstance(self.model, GridSearchCV):
+            joblib.dump(self.model.best_estimator_, path)
+        else:
+            joblib.dump(self.model, path)
+
+class RandomForestHandler(ModelHandler):
+    """
+    A class for handling RandomForestClassifier specific functionalities.
+    """
+    def __init__(self, random_state=42, param_grid=None, cv=None):
+        super().__init__(RandomForestClassifier(random_state), param_grid, cv)
+
+class LogisticRegressionHandler(ModelHandler):
+    """
+    A class for handling LogisticRegression specific functionalities.
+    """
+    def __init__(self, solver='lbfgs', max_iter=3000, param_grid=None, cv=None):
+        super().__init__(LogisticRegression(solver=solver, max_iter=max_iter), param_grid, cv)
+
+
 def main():
     df = import_data(r"./data/bank_data.csv")
     df['Churn'] = df['Attrition_Flag'].apply(lambda val: 0 if val == "Existing Customer" else 1)
+    print("isNull", df.isnull().sum())
     X_train, X_test, y_train, y_test = perform_feature_engineering(df, "Churn")
     print(X_train.shape)
     print(X_test.shape)
     print(y_train.shape)
     print(y_test.shape)
+
+    ### TRAIN ###
+    #rfc_param_grid = { 
+    #    'n_estimators': [200, 500],
+    #    'max_features': ['auto', 'sqrt'],
+    #    'max_depth': [4, 5, 100],
+    #    'criterion': ['gini', 'entropy']
+    #}
+    rfc_param_grid = {'n_estimators': [200, 500]}
+
+    #rfc_handler = RandomForestHandler(param_grid=rfc_param_grid, cv=5)
+    lrc_handler = LogisticRegressionHandler()
+    
+    # Assume X_train, y_train, X_test are defined elsewhere
+    #rfc_handler.train(X_train, y_train)
+    lrc_handler.train(X_train, y_train)
+    
+    #y_train_preds_rf = rfc_handler.predict(X_train)
+    #y_test_preds_rf = rfc_handler.predict(X_test)
+    
+    y_train_preds_lr = lrc_handler.predict(X_train)
+    y_test_preds_lr = lrc_handler.predict(X_test)
+    
+    #print("rf", y_train_preds_rf, y_test_preds_rf)
+    print("lr", y_train_preds_lr, y_test_preds_lr)
+    # Save models to disk
+    #rfc_handler.save_model('rfc_model.joblib')
+    #lrc_handler.save_model('lrc_model.joblib')
 
 if __name__ == "__main__":
     main()
